@@ -2,9 +2,9 @@ version: 2
 
 sources:
   - name: crm
-    database: tpcdi
-    schema: digen
-    loader: snowpark
+    database: stewart
+    schema: tpcdi_sf10
+    loader: Python
 
     tables:
       - name: customer_mgmt
