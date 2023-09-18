@@ -16,26 +16,26 @@ select
     sp_rating,
     pts as effective_timestamp,
     ifnull(
-        timestampadd(
-            'millisecond',
-            -1,
-            lag(pts) over (
-                partition by company_id
-                order by
-                pts desc
-            )
-        ),
-        to_timestamp('9999-12-31 23:59:59.999')
+      timestampadd(
+        millisecond,
+        -1,
+        lag(pts) over (
+          partition by cik
+          order by
+            pts desc
+        )
+      ),
+      to_timestamp('9999-12-31 23:59:59.999')
     ) as end_timestamp,
     CASE
-        WHEN (
-            row_number() over (
-                partition by company_id
-                order by
-                pts desc
-            ) = 1
-        ) THEN TRUE
-        ELSE FALSE
+      WHEN (
+        row_number() over (
+          partition by cik
+          order by
+            pts desc
+        ) = 1
+      ) THEN TRUE
+      ELSE FALSE
     END as IS_CURRENT
 from {{ ref("finwire_company") }} cmp
 join {{ ref("reference_status_type") }} st on cmp.status = st.st_id

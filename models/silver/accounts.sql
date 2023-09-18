@@ -1,10 +1,16 @@
 select
     action_type,
-    decode(action_type,
-      'NEW','Active',
-      'ADDACCT','Active',
-      'UPDACCT','Active',
-      'CLOSEACCT','Inactive') status,
+    decode(
+      action_type,
+      'NEW',
+      'Active',
+      'ADDACCT',
+      'Active',
+      'UPDACCT',
+      'Active',
+      'CLOSEACCT',
+      'Inactive'
+    ) status,
     ca_id account_id,
     ca_name account_desc,
     c_id customer_id,
@@ -34,26 +40,26 @@ select
     ca_b_id broker_id,
     action_ts as effective_timestamp,
     ifnull(
-        timestampadd(
-        'millisecond',
+      timestampadd(
+        MILLISECOND,
         -1,
         lag(action_ts) over (
-            partition by ca_id
-            order by
+          partition by ca_id
+          order by
             action_ts desc
         )
-        ),
-        to_timestamp('9999-12-31 23:59:59.999')
+      ),
+      to_timestamp('9999-12-31 23:59:59.999')
     ) as end_timestamp,
     CASE
-        WHEN (
-            row_number() over (
-                partition by ca_id
-                order by
-                action_ts desc
-            ) = 1
-        ) THEN TRUE
-        ELSE FALSE
+      WHEN (
+        row_number() over (
+          partition by ca_id
+          order by
+            action_ts desc
+        ) = 1
+      ) THEN TRUE
+      ELSE FALSE
     END as IS_CURRENT
 from
     {{ ref('crm_customer_mgmt') }} c

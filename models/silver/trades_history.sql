@@ -4,9 +4,10 @@ select
     t_ca_id account_id,
     ts.st_name trade_status,
     tt_name trade_type,
-    case t_is_cash
-        when true then 'Cash'
-        when false then 'Margin'
+    case
+      t_is_cash
+      when true then 'Cash'
+      when false then 'Margin'
     end transaction_type,
     t_s_symb symbol,
     t_exec_name executor_name,
@@ -19,26 +20,26 @@ select
     us.st_name update_status,
     th_dts effective_timestamp,
     ifnull(
-        timestampadd(
-        'millisecond',
+      timestampadd(
+        millisecond,
         -1,
         lag(th_dts) over (
-            partition by t_id
-            order by
+          partition by t_id
+          order by
             th_dts desc
         )
-        ),
-        to_timestamp('9999-12-31 23:59:59.999')
+      ),
+      to_timestamp('9999-12-31 23:59:59.999')
     ) as end_timestamp,
     CASE
-        WHEN (
-            row_number() over (
-                partition by t_id
-                order by
-                th_dts desc
-            ) = 1
-        ) THEN TRUE
-        ELSE FALSE
+      WHEN (
+        row_number() over (
+          partition by t_id
+          order by
+            th_dts desc
+        ) = 1
+      ) THEN TRUE
+      ELSE FALSE
     END as IS_CURRENT
 from
     {{ ref('brokerage_trade') }} 
