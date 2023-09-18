@@ -1,0 +1,16 @@
+version: 2
+
+sources:
+  - name: brokerage
+    database: tpcdi
+    schema: digen
+    loader: snowpark
+
+    tables:
+      - name: daily_market
+      - name: watch_history
+      - name: trade
+      - name: trade_history
+      - name: holding_history
+      - name: cash_transaction
+      

@@ -1,0 +1,10 @@
+version: 2
+
+sources:
+  - name: syndicated
+    database: tpcdi
+    schema: digen
+    loader: snowpark
+
+    tables:
+      - name: prospect

@@ -1,0 +1,10 @@
+version: 2
+
+sources:
+  - name: crm
+    database: tpcdi
+    schema: digen
+    loader: snowpark
+
+    tables:
+      - name: customer_mgmt

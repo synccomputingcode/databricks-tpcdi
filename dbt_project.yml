@@ -23,15 +23,22 @@ clean-targets:         # directories to be removed by `dbt clean`
   - "target"
   - "dbt_packages"
 
-
 # Configuring models
 # Full documentation: https://docs.getdbt.com/docs/configuring-models
 
-# In this example config, we tell dbt to build all models in the example/
-# directory as views. These settings can be overridden in the individual model
-# files using the `{{ config(...) }}` macro.
 models:
-  tpcdi:
-    # Config indicated by + and applies to all files under models/example/
+  dbt_tpcdi:
     example:
       +materialized: view
+    bronze:
+      +schema: bronze
+      +materialized: table
+    silver:
+      +schema: silver
+      +materialized: table
+    gold:
+      +schema: gold
+      +materialized: table
+    work:
+      +schema: work
+      +materialized: ephemeral

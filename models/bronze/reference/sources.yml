@@ -1,0 +1,14 @@
+version: 2
+
+sources:
+  - name: reference
+    database: tpcdi
+    schema: digen
+    loader: snowpark
+
+    tables:
+      - name: status_type
+      - name: industry
+      - name: date
+      - name: tax_rate
+      - name: trade_type
