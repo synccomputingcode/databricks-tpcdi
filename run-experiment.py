@@ -3,11 +3,18 @@ import itertools as its
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service import sql
 from databricks.sdk.core import DatabricksError
+import concurrent.futures as futures
 
 # Databricks client
 w = WorkspaceClient()
 # dbt runner
 dbt = dbtRunner()
+
+# set the audit catalog
+audit_catalog = 'stewart'
+audit_schema = 'tpcdi_audit'
+audit_table = 'model_executions'
+scaling_factor = 10
 
 def create_warehouse(
         size: str,
@@ -48,6 +55,21 @@ def create_warehouse(
 
     return warehouse_id
 
+# create the audit schema if it doesn't exist
+try:
+    audit_schema = w.schemas.create(name=f'tpcdi_audit', catalog_name=audit_catalog)
+except DatabricksError as err:
+     print(str(err))
+
+# create a warehouse for audit puposes
+audit_warehouse_id = audit_warehouse = create_warehouse('X-Small','serverless')
+
+# create the audit table
+w.statement_execution.execute_statement(
+    statement=f"""create table if not exists {audit_catalog}.{audit_schema}.{audit_table} 
+                (experiment_id STRING, warehouse_size STRING, warehouse_type STRING, threads INT, schema_name STRING, model_name STRING, execution_time FLOAT, scaling_factor INT )""",
+    warehouse_id=audit_warehouse_id
+)
 
 # generate list of test cases
 #size_list = ['2X-Small', 'X-Small', 'Small', 'Medium', 'Large', 'X-Large', '2X-Large', '3X-Large', '4X-Large']
@@ -69,8 +91,18 @@ for compute_size, compute_type, thread_case in p:
 
     # run the dbt workflow
     #args = ["--fail-fast", "build", "--vars", vars, "--threads", thread_case, "--target", "dynamic"]
-    args = ["--fail-fast", "build", "--vars", vars, "--threads", thread_case, "--target", "dynamic", '--select', 'hr_employee']
-    dbt.invoke(args)
+    args = ["--fail-fast", "build", "--vars", vars, "--threads", thread_case, "--target", "dynamic", '--select', 'hr_employee reference_trade_type']
+    res: dbtRunnerResult = dbt.invoke(args)
+    for r in res.result:
+        #print(f"{r}")
+        sql_statement = f"""insert into {audit_catalog}.{audit_schema}.{audit_table} 
+                        values ('{warehouse_id}', '{compute_size}', '{compute_type.lower()}', {thread_case}, '{r.node.schema}', '{r.node.name}', {r.execution_time}, {scaling_factor})"""
+        #print(sql_statement)
+        insert = w.statement_execution.execute_statement(
+            statement=sql_statement,
+            warehouse_id=audit_warehouse_id
+        )
+        print(insert)
 
     # delete the schemas
     for zone in ['gold', 'silver', 'bronze']:
@@ -81,3 +113,6 @@ for compute_size, compute_type, thread_case in p:
 
     # delete the warehouse
     w.warehouses.delete(warehouse_id)
+
+# delete audit warehouse
+w.warehouses.delete(audit_warehouse_id)
