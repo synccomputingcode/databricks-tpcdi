@@ -42,3 +42,6 @@ models:
     work:
       +schema: work
       +materialized: ephemeral
+
+vars:
+  scaling_factor: '10'

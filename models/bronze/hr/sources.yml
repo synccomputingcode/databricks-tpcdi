@@ -3,7 +3,7 @@ version: 2
 sources:
   - name: hr
     database: stewart
-    schema: tpcdi_sf10
+    schema: tpcdi_sf{{ var("scaling_factor") }}
     loader: Python
 
     tables:
