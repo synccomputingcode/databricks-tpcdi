@@ -69,7 +69,6 @@ def run_experiment(
     vars = (
         '{'
         + f'"warehouse_id": "{warehouse_id}", '
-        + f'"schema": "{warehouse_id}", '
         + f'"scaling_factor": "{scaling_factor}", '
         + '}'
     )

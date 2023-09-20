@@ -44,4 +44,4 @@ models:
       +materialized: ephemeral
 
 vars:
-  scaling_factor: '10'
+  scaling_factor: 10
