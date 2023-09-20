@@ -42,6 +42,8 @@ models:
     work:
       +schema: work
       +materialized: ephemeral
+    elementary:
+      +schema: "elementary"
 
 vars:
   scaling_factor: 10
