@@ -4,6 +4,7 @@ from databricks.sdk import WorkspaceClient
 from databricks.sdk.service import sql
 from databricks.sdk.core import DatabricksError
 import concurrent.futures as futures
+from pathlib import Path
 
 # Databricks client
 w = WorkspaceClient()
@@ -14,6 +15,7 @@ dbt = dbtRunner()
 audit_catalog = 'stewart'
 audit_schema = 'tpcdi_audit'
 audit_table = 'model_executions'
+# the variable determines which schema acts as the source
 scaling_factor = 10
 
 def create_warehouse(
@@ -55,6 +57,64 @@ def create_warehouse(
 
     return warehouse_id
 
+def run_experiment(
+        size:str,
+        warehouse_type:str,
+        threads:int,
+        audit:bool = True
+):
+    # create the warehouse
+    warehouse_id = create_warehouse(size, warehouse_type, threads)
+    # prepare vars arg
+    vars = (
+        '{'
+        + f'"warehouse_id": "{warehouse_id}", '
+        + f'"schema": "{warehouse_id}", '
+        + f'"scaling_factor": "{scaling_factor}", '
+        + '}'
+    )
+    #print(vars)
+    
+    # run the dbt workflow
+    args = [
+        "--fail-fast", 
+        "build", 
+        "--vars", vars, 
+        "--threads", threads, 
+        "--target", "dynamic",
+        "--target-path", f"{Path.home()}/dbt-target/{warehouse_id}"
+    ]
+    res: dbtRunnerResult = dbt.invoke(args)
+
+    # insert into the audit table
+    if audit:
+        for r in res.result:
+            sql_statement = f"""insert into {audit_catalog}.{audit_schema}.{audit_table} 
+                            values ('{audit_warehouse_id}', '{warehouse_id}', '{size}', '{warehouse_type.lower()}', {threads}, '{r.node.schema}', '{r.node.name}', {r.execution_time}, {scaling_factor})"""
+            insert = w.statement_execution.execute_statement(
+                statement=sql_statement,
+                warehouse_id=audit_warehouse_id
+            )
+            #print(insert)
+
+    # delete the schemas
+    for zone in ['gold', 'silver', 'bronze']:
+        w.statement_execution.execute_statement(
+            statement=f"drop schema stewart.dl_{warehouse_id}_{zone} cascade",
+            warehouse_id=audit_warehouse_id
+        )
+
+    # delete the warehouse
+    w.warehouses.delete(warehouse_id)
+
+def print_values(
+        size:str,
+        warehouse_type:str,
+        threads:int,
+):
+    print(f"size: {size}, warehouse_type: {warehouse_type}, threads: {threads}")
+
+
 # create the audit schema if it doesn't exist
 try:
     audit_schema = w.schemas.create(name=f'tpcdi_audit', catalog_name=audit_catalog)
@@ -62,57 +122,38 @@ except DatabricksError as err:
      print(str(err))
 
 # create a warehouse for audit puposes
-audit_warehouse_id = audit_warehouse = create_warehouse('X-Small','serverless')
+audit_warehouse_id = audit_warehouse = create_warehouse('X-Large','serverless')
 
 # create the audit table
 w.statement_execution.execute_statement(
     statement=f"""create table if not exists {audit_catalog}.{audit_schema}.{audit_table} 
-                (experiment_id STRING, warehouse_size STRING, warehouse_type STRING, threads INT, schema_name STRING, model_name STRING, execution_time FLOAT, scaling_factor INT )""",
+                (batch_id STRING, experiment_id STRING, warehouse_size STRING, warehouse_type STRING, threads INT, schema_name STRING, model_name STRING, execution_time FLOAT, scaling_factor INT )""",
     warehouse_id=audit_warehouse_id
 )
 
 # generate list of test cases
 #size_list = ['2X-Small', 'X-Small', 'Small', 'Medium', 'Large', 'X-Large', '2X-Large', '3X-Large', '4X-Large']
-size_list = ['Small']
-#compute_list = ['SERVERLESS', 'PRO', 'CLASSIC']
-compute_list = ['SERVERLESS']
-#thread_list = [8, 16, 24, 32]
-thread_list = [16]
+size_list = ['Small', 'Medium', 'Large', 'X-Large']
+#size_list = ['Small']
+compute_list = ['SERVERLESS', 'PRO', 'CLASSIC']
+#compute_list = ['SERVERLESS']
+thread_list = [8, 16, 24, 32]
+#thread_list = [16]
 
+# run all the different permutations
 p = its.product(size_list, compute_list, thread_list)
 
-index = 0
-for compute_size, compute_type, thread_case in p:
-    index += 1
+# with futures.ThreadPoolExecutor(max_workers=20) as e:
+#     for size, warehouse_type, threads in p:
+#         future = e.submit(run_experiment, size, warehouse_type, threads, False)
 
-    # create the warehouse
-    warehouse_id = create_warehouse(compute_size, compute_type, thread_case)
-    vars = '{"warehouse_id": ' + f'"{warehouse_id}", ' + f'"schema": "{warehouse_id}"' + '}'
+# e.shutdown(wait=True)
 
-    # run the dbt workflow
-    #args = ["--fail-fast", "build", "--vars", vars, "--threads", thread_case, "--target", "dynamic"]
-    args = ["--fail-fast", "build", "--vars", vars, "--threads", thread_case, "--target", "dynamic", '--select', 'hr_employee reference_trade_type']
-    res: dbtRunnerResult = dbt.invoke(args)
-    for r in res.result:
-        #print(f"{r}")
-        sql_statement = f"""insert into {audit_catalog}.{audit_schema}.{audit_table} 
-                        values ('{warehouse_id}', '{compute_size}', '{compute_type.lower()}', {thread_case}, '{r.node.schema}', '{r.node.name}', {r.execution_time}, {scaling_factor})"""
-        #print(sql_statement)
-        insert = w.statement_execution.execute_statement(
-            statement=sql_statement,
-            warehouse_id=audit_warehouse_id
-        )
-        print(insert)
+for size, warehouse_type, threads in p:
+    #print_values(size, warehouse_type, threads)
+    run_experiment(size, warehouse_type, threads, True)
 
-    # delete the schemas
-    for zone in ['gold', 'silver', 'bronze']:
-        w.statement_execution.execute_statement(
-            statement=f"drop schema stewart.dl_{warehouse_id}_{zone} cascade",
-            warehouse_id=warehouse_id
-        )
-
-    # delete the warehouse
-    w.warehouses.delete(warehouse_id)
 
 # delete audit warehouse
 w.warehouses.delete(audit_warehouse_id)
+print(f"The BATCH_ID is '{audit_warehouse_id}'.")
