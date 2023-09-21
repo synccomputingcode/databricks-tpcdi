@@ -5,18 +5,21 @@ from databricks.sdk.service import sql
 from databricks.sdk.core import DatabricksError
 import concurrent.futures as futures
 from pathlib import Path
+import json
+
+# set some of the defaults
+catalog_name = 'stewart'
+scaling_factor = 10
+job_name = "dbt-sql-tpcdi-experiment"
+task_key = f"{job_name}-1"
+cluster_key = f"{task_key}-cluster"
+creator = "stewart.bryson@synccomputing.com"
+node_size = "m5d.large"
 
 # Databricks client
 w = WorkspaceClient()
 # dbt runner
 dbt = dbtRunner()
-
-# set the audit catalog
-audit_catalog = 'stewart'
-audit_schema = 'tpcdi_audit'
-audit_table = 'model_executions'
-# the variable determines which schema acts as the source
-scaling_factor = 10
 
 def create_warehouse(
         size: str,
@@ -60,99 +63,130 @@ def create_warehouse(
 def run_experiment(
         size:str,
         warehouse_type:str,
-        threads:int,
-        audit:bool = True
+        threads:int
 ):
     # create the warehouse
     warehouse_id = create_warehouse(size, warehouse_type, threads)
-    # prepare vars arg
-    vars = (
-        '{'
-        + f'"warehouse_id": "{warehouse_id}", '
-        + f'"scaling_factor": "{scaling_factor}", '
-        + '}'
-    )
-    #print(vars)
-    
-    # run the dbt workflow
-    args = [
-        "--fail-fast", 
-        "build", 
-        "--vars", vars, 
-        "--threads", threads, 
-        "--target", "dynamic",
-        "--target-path", f"{Path.home()}/dbt-target/{warehouse_id}"
-    ]
-    res: dbtRunnerResult = dbt.invoke(args)
 
-    # insert into the audit table
-    if audit:
-        for r in res.result:
-            sql_statement = f"""insert into {audit_catalog}.{audit_schema}.{audit_table} 
-                            values ('{audit_warehouse_id}', '{warehouse_id}', '{size}', '{warehouse_type.lower()}', {threads}, '{r.node.schema}', '{r.node.name}', {r.execution_time}, {scaling_factor})"""
-            insert = w.statement_execution.execute_statement(
-                statement=sql_statement,
-                warehouse_id=audit_warehouse_id
-            )
-            #print(insert)
+    # prepare the Job JSON
+    dbt_task = (
+        "dbt build --fail-fast --vars '{"
+        + f'"orchestrator": "Databricks", '
+        + f'"job_name": "{warehouse_type}", '
+        + f'"job_id": "{size}", '
+        + f'"job_run_id": "{warehouse_id}", '
+        + f'"scaling_factor": {scaling_factor}'
+        + "}'"
+    )
+
+    dbt_elem_task = dbt_task + ' --select elementary'
+
+    # print(dbt_task)
+    # print(dbt_elem_task)
+
+    job = {
+            "run_as": {
+                "user_name": creator
+            },
+            "name": job_name,
+            "email_notifications": {
+                "no_alert_for_skipped_runs": False
+            },
+            "webhook_notifications": {},
+            "timeout_seconds": 0,
+            "max_concurrent_runs": 1,
+            "tasks": [
+                {
+                    "task_key": task_key,
+                    "run_if": "ALL_SUCCESS",
+                    "dbt_task": {
+                        "project_directory": "",
+                        "commands": [
+                            "dbt deps",
+                            dbt_task,
+                            dbt_elem_task,
+                        ],
+                        "schema": "dl",
+                        "warehouse_id": warehouse_id,
+                        "catalog": catalog_name
+                    },
+                    "job_cluster_key": cluster_key,
+                    "libraries": [
+                        {
+                            "pypi": {
+                                "package": "dbt-databricks==1.6.4"
+                            }
+                        }
+                    ],
+                    "timeout_seconds": 0,
+                    "email_notifications": {},
+                    "notification_settings": {
+                        "no_alert_for_skipped_runs": False,
+                        "no_alert_for_canceled_runs": False,
+                        "alert_on_last_attempt": False
+                    }
+                }
+            ],
+            "job_clusters": [
+                {
+                    "job_cluster_key": cluster_key,
+                    "new_cluster": {
+                        "cluster_name": "",
+                        "spark_version": "14.0.x-scala2.12",
+                        "aws_attributes": {
+                            "first_on_demand": 1,
+                            "availability": "SPOT_WITH_FALLBACK",
+                            "zone_id": "us-east-1b",
+                            "spot_bid_price_percent": 100,
+                            "ebs_volume_count": 0
+                        },
+                        "node_type_id": node_size,
+                        "enable_elastic_disk": False,
+                        "data_security_mode": "SINGLE_USER",
+                        "runtime_engine": "PHOTON",
+                        "num_workers": 8
+                    }
+                }
+            ],
+            "git_source": {
+                "git_url": "https://github.com/stewartbryson/databricks-tpcdi.git",
+                "git_provider": "gitHub",
+                "git_branch": "databricks-job"
+            },
+            "tags": {
+                "scaling_factor": scaling_factor,
+                "warehouse_id": warehouse_id,
+                "warehouse_size": size,
+                "warehouse_type": warehouse_type,
+                "job_name": job_name
+            },
+            "format": "MULTI_TASK"
+        }
+    job = json.dumps(job, indent=2)
+    print(job)
 
     # delete the schemas
     for zone in ['gold', 'silver', 'bronze']:
         w.statement_execution.execute_statement(
-            statement=f"drop schema stewart.dl_{warehouse_id}_{zone} cascade",
-            warehouse_id=audit_warehouse_id
+            statement=f"drop schema if exists stewart.dl_{warehouse_id}_{zone} cascade",
+            warehouse_id=warehouse_id
         )
 
     # delete the warehouse
     w.warehouses.delete(warehouse_id)
 
-def print_values(
-        size:str,
-        warehouse_type:str,
-        threads:int,
-):
-    print(f"size: {size}, warehouse_type: {warehouse_type}, threads: {threads}")
-
-
-# create the audit schema if it doesn't exist
-try:
-    audit_schema = w.schemas.create(name=f'tpcdi_audit', catalog_name=audit_catalog)
-except DatabricksError as err:
-     print(str(err))
-
-# create a warehouse for audit puposes
-audit_warehouse_id = audit_warehouse = create_warehouse('X-Large','serverless')
-
-# create the audit table
-w.statement_execution.execute_statement(
-    statement=f"""create table if not exists {audit_catalog}.{audit_schema}.{audit_table} 
-                (batch_id STRING, experiment_id STRING, warehouse_size STRING, warehouse_type STRING, threads INT, schema_name STRING, model_name STRING, execution_time FLOAT, scaling_factor INT )""",
-    warehouse_id=audit_warehouse_id
-)
-
 # generate list of test cases
 #size_list = ['2X-Small', 'X-Small', 'Small', 'Medium', 'Large', 'X-Large', '2X-Large', '3X-Large', '4X-Large']
-size_list = ['Small', 'Medium', 'Large', 'X-Large']
-#size_list = ['Small']
-compute_list = ['SERVERLESS', 'PRO', 'CLASSIC']
-#compute_list = ['SERVERLESS']
-thread_list = [8, 16, 24, 32]
-#thread_list = [16]
+#size_list = ['Small', 'Medium', 'Large', 'X-Large']
+size_list = ['Small']
+#compute_list = ['SERVERLESS', 'PRO', 'CLASSIC']
+compute_list = ['SERVERLESS']
+#thread_list = [8, 16, 24, 32]
+thread_list = [16]
 
 # run all the different permutations
 p = its.product(size_list, compute_list, thread_list)
 
-# with futures.ThreadPoolExecutor(max_workers=20) as e:
-#     for size, warehouse_type, threads in p:
-#         future = e.submit(run_experiment, size, warehouse_type, threads, False)
-
-# e.shutdown(wait=True)
-
 for size, warehouse_type, threads in p:
-    #print_values(size, warehouse_type, threads)
-    run_experiment(size, warehouse_type, threads, True)
+    run_experiment(size, warehouse_type, threads)
 
-
-# delete audit warehouse
-w.warehouses.delete(audit_warehouse_id)
-print(f"The BATCH_ID is '{audit_warehouse_id}'.")
