@@ -1,4 +1,3 @@
-from dbt.cli.main import dbtRunner, dbtRunnerResult
 import itertools as its
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service import sql
@@ -18,8 +17,6 @@ node_size = "m5d.large"
 
 # Databricks client
 w = WorkspaceClient()
-# dbt runner
-dbt = dbtRunner()
 
 def create_warehouse(
         size: str,
