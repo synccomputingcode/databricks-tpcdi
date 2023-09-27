@@ -170,7 +170,7 @@ def run_experiment(
                     ],
                     "run_if": "ALL_SUCCESS",
                     "notebook_task": {
-                        "notebook_path": "/Users/stewart.bryson@synccomputing.com/Run dbt experiment cleanup",
+                        "notebook_path": "notebooks/Run dbt experiment cleanup",
                         "base_parameters": {
                             "warehouse_id": warehouse_id,
                             "catalog_name": catalog_name,
@@ -178,7 +178,7 @@ def run_experiment(
                             "batch_id": batch_id
                         
                         },
-                        "source": "WORKSPACE"
+                        "source": "GIT"
                     },
                     "job_cluster_key": job_cluster,
                     "timeout_seconds": 0,
