@@ -212,7 +212,7 @@ def run_experiment(
                 }
             ],
             "git_source": {
-                "git_url": "https://github.com/stewartbryson/databricks-tpcdi.git",
+                "git_url": "https://github.com/synccomputingcode/databricks-tpcdi.git",
                 "git_provider": "gitHub",
                 "git_branch": "databricks-job"
             },
