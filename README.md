@@ -10,16 +10,9 @@ For more questions to learn more about how to optimize your Databricks jobs, fin
 
 https://www.synccomputing.com
 
-### Using the starter project
+### How to get started
 
-Try running the following commands:
-- dbt run
-- dbt test
+1)  Clone this repo into your local environment
+2)  Set up your Databricks credentials
+3)  Run the DBT project
 
-
-### Resources:
-- Learn more about dbt [in the docs](https://docs.getdbt.com/docs/introduction)
-- Check out [Discourse](https://discourse.getdbt.com/) for commonly asked questions and answers
-- Join the [chat](https://community.getdbt.com/) on Slack for live discussions and support
-- Find [dbt events](https://events.getdbt.com) near you
-- Check out [the blog](https://blog.getdbt.com/) for the latest news on dbt's development and best practices
